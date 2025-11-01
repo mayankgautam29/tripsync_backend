@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
 from dotenv import load_dotenv
 import os
+import uvicorn
 
 # Load .env file
 load_dotenv()
@@ -29,7 +30,8 @@ app.add_middleware(
 # System prompt for model
 SYSTEM_PROMPT = """
 You are an AI travel planner that creates realistic and time-specific itineraries. 
-Given location, dates, interests, and group size — produce a short, structured day-by-day plan. DO not include extra text just give answer in with simplicity.
+Given location, dates, interests, and group size — produce a short, structured day-by-day plan. 
+Do not include extra text, just give the answer simply.
 """
 
 # Data model for request
@@ -45,7 +47,7 @@ class TripData(BaseModel):
 @app.post("/generate-itinerary")
 def generate_itinerary(trip: TripData):
     try:
-        # ✅ Build user prompt dynamically
+        # Build user prompt dynamically
         prompt_text = (
             f"Plan a detailed itinerary for a trip to {trip.location} "
             f"from {trip.date_from} to {trip.date_to}. "
@@ -54,14 +56,9 @@ def generate_itinerary(trip: TripData):
             f"Include timings, activities, and local recommendations."
         )
 
-        # ✅ Use correct model name
-        # "gemini-1.5-flash" (or "gemini-1.5-pro") depending on your account access
         model = genai.GenerativeModel(model_name="gemini-2.5-flash")
 
-        # Generate the itinerary
         response = model.generate_content([SYSTEM_PROMPT, prompt_text])
-
-        # Handle empty or missing response
         itinerary_text = getattr(response, "text", None)
         if not itinerary_text:
             raise HTTPException(status_code=500, detail="Model returned no content")
@@ -76,3 +73,9 @@ def generate_itinerary(trip: TripData):
 @app.get("/")
 def root():
     return {"message": "Trip Itinerary Generator API is running 🚀"}
+
+
+# ✅ Run Uvicorn with dynamic port (for Render deployment)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))  # Render dynamically assigns a PORT
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
