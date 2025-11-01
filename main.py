@@ -1,12 +1,14 @@
-from fastapi import FastAPI
+# main.py
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import List, Dict
 import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 import uvicorn
 
-# Load environment variables
+# Load environment variables from .env
 load_dotenv()
 
 # Configure Gemini API
@@ -16,38 +18,38 @@ if not api_key:
 genai.configure(api_key=api_key)
 
 # Initialize FastAPI app
-app = FastAPI()
+app = FastAPI(title="AI Travel Itinerary API", version="1.0")
 
-# Enable CORS (optional)
+# Enable CORS (optional, for frontend usage)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Change "*" to your frontend URL in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Request model
+# Pydantic model for request
 class TripData(BaseModel):
-    tripId: str
-    location: str
-    date_from: str
-    date_to: str
-    interests: list[str]
-    group_size: dict
+    tripId: str = Field(..., description="Unique ID for the trip")
+    location: str = Field(..., description="Destination of the trip")
+    date_from: str = Field(..., description="Start date in YYYY-MM-DD format")
+    date_to: str = Field(..., description="End date in YYYY-MM-DD format")
+    interests: List[str] = Field(..., description="List of interests")
+    group_size: Dict[str, int] = Field(..., description="Dictionary with min and max group size")
 
-# Root route (like Express `/`)
+# Root endpoint
 @app.get("/")
 def home():
     return {"message": "Hello World! API is running 🚀"}
 
-# AI itinerary route
+# Generate itinerary endpoint
 @app.post("/generate-itinerary")
 def generate_itinerary(trip: TripData):
     SYSTEM_PROMPT = """
     You are an AI travel planner that creates realistic and time-specific itineraries.
     Given location, dates, interests, and group size — produce a short, structured day-by-day plan.
-    Do not include extra text, just give the answer simply.
+    Only provide the itinerary, do not add extra explanations.
     """
 
     prompt_text = (
@@ -59,14 +61,15 @@ def generate_itinerary(trip: TripData):
     )
 
     try:
-        model = genai.GenerativeModel(model_name="gemini-2.0-flash")
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
         response = model.generate_content([SYSTEM_PROMPT, prompt_text])
-        return {"itinerary": response.text}
+        itinerary_text = getattr(response, "text", str(response))
+        return {"tripId": trip.tripId, "itinerary": itinerary_text.strip()}
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=f"Failed to generate itinerary: {e}")
 
-# Run the app (like Express)
+# Run server like Express.js
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 4000))  # Default like Express
+    port = int(os.environ.get("PORT", 4000))  # default port like Express
     print(f"🚀 Server is running on http://0.0.0.0:{port}")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
